@@ -14,12 +14,12 @@ class CreateDatabase:
     def create_database(self):
         try:
             conn = sqlite3.connect(self.db_name)
-            print("Kết nối đến cơ sở dữ liệu thành công.")
+            print("Connection to database successful.")
             conn.close()
         except sqlite3.Error as e:
-            print("Lỗi khi kết nối đến cơ sở dữ liệu:", e)
+            print("Error connecting to database:", e)
 
-    def create_tables(self): # Hàm tạo bảng, Status của User có thể là 1 trong 3 giá trị: 'USER', 'VIP', 'ADMIN'
+    def create_tables(self): 
         create_table_queries = [
             '''CREATE TABLE IF NOT EXISTS Answers (
                 AnswerID INTEGER PRIMARY KEY,
@@ -98,6 +98,16 @@ class CreateDatabase:
                 AccessTokens TEXT UNIQUE,
                 FOREIGN KEY (ClassID) REFERENCES Class(ClassID) ON DELETE CASCADE
             )''',
+            '''CREATE TABLE IF NOT EXISTS Documents (
+                DocID INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT,
+                URL TEXT,
+                Thumbnail TEXT,
+                ClassID INTEGER,
+                Created_at DATE,
+                FOREIGN KEY (ClassID) REFERENCES Class(ClassID)  ON DELETE CASCADE
+            );
+            '''
         ]
 
         try:
@@ -106,10 +116,10 @@ class CreateDatabase:
             for query in create_table_queries:
                 cursor.execute(query)
             conn.commit()
-            print("Các bảng đã được tạo thành công.")
+            print("The tables have been created successfully.")
             conn.close()
         except sqlite3.Error as e:
-            print("Lỗi khi tạo bảng:", e)
+            print("Error creating table:", e)
 
 class UserModel:
     def __init__(self):
@@ -121,8 +131,6 @@ class UserModel:
             cursor = conn.cursor()
             cursor.execute("SELECT Status FROM User WHERE AccessTokens=?", (token,))
             role = cursor.fetchone()
-            # change to json
-            
             conn.close()
             return role
         except sqlite3.Error as e:
@@ -220,9 +228,16 @@ class UserModel:
             print("Lỗi khi cập nhật quyền người dùng:", e)
             return False
     
-
-        
     def update_user_info(self, user_id, old_password, new_password, new_email, new_dob, new_Name):
+        if len(new_password) ==0 and len(new_email) == 0 and len(new_Name) == 0 and len(new_dob) == 0:
+            return 500, "Nothing to update"
+        if len(new_email) == 0:
+            return 500, "Email cannot be empty"
+        if len(new_Name) == 0:
+            return 500, "Name cannot be empty"
+        if len(new_dob) == 0:
+            return 500, "Date of birth cannot be empty"
+        
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
@@ -261,8 +276,6 @@ class UserModel:
         except sqlite3.Error as e:
             print("Lỗi khi xóa người dùng:", e)
             return 500, "Failed to deleted user"
-
-
 
     def user_count_to_chart(self):
         try:
@@ -526,6 +539,18 @@ class QuestionModel:
     def __init__(self):
         self.db_name = DB_NAME
 
+    def get_last_question_id(self):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT QuestionID FROM Question ORDER BY QuestionID DESC LIMIT 1")
+            question_id = cursor.fetchone()
+            conn.close()
+            return question_id[0]
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy ID câu hỏi cuối cùng:", e)
+            return None
+
     def get_all_questions(self):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -682,8 +707,7 @@ class QuestionModel:
         except sqlite3.Error as e:
             print("Lỗi khi lấy số lượng câu hỏi:", e)
             return None
-        
-        
+           
     def generate_questions(self,class_ids, topic_ids=None, chapter_ids=None, num_questions=1,token=None,user_id=None,type="P"):
         # result_string = f"class_ids: {class_ids}, topic_ids: {topic_ids}, chapter_ids: {chapter_ids}, num_questions: {num_questions}, token: {token}, user_id: {user_id}"
         # print(result_string)
@@ -795,7 +819,6 @@ class AnswerModel:
             return None
 
     def add_answer(self, question_id, answer_options, correct_answer, explaination):
-        print(question_id, answer_options, correct_answer, explaination)
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
@@ -835,18 +858,6 @@ class ExamModel:
     def __init__(self):
         self.db_name = DB_NAME
 
-    def get_all_exams(self):
-        try:
-            conn = sqlite3.connect(self.db_name)
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM Exam")
-            exams = cursor.fetchall()
-            conn.close()
-            return exams
-        except sqlite3.Error as e:
-            print("Lỗi khi lấy danh sách bài thi:", e)
-            return None
-
     def get_exam_type(self, exam_id):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -871,17 +882,33 @@ class ExamModel:
             print("Lỗi khi lấy thông tin bài thi:", e)
             return None
 
-    def get_exams_by_user_id(self, user_id):
+    def get_all_exam_results_user(self, user_id,exam_type):
+        # get all exams by user_id và truy vấn thông tin bài thi dựa vào ID của bài thi trong ExamResult model
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM Exam WHERE UserID=?", (user_id,))
+            cursor.execute("SELECT * FROM Exam WHERE UserID=? AND Type=?", (user_id,exam_type))
             exams = cursor.fetchall()
             conn.close()
-            return exams
+            exam_results = []
+            exam_result_model=ExamResultModel()
+            for exam in exams:
+                exam_result = exam_result_model.get_exam_result_by_exam_id(exam[0])
+                correct_count = exam_result["correct_count"]
+                incorrect_count = exam_result["incorrect_count"]
+                score = exam_result["score"]
+                count_question = len(ExamQuestionModel().get_exam_question_by_id(exam[0]))
+                unanswered_question=count_question-correct_count-incorrect_count
+                if exam[3] == None:
+                    status = "Inprogress"
+                else:
+                    status = "Completed"
+                exam_results.append({"exam_id": exam[0], "correct_count": correct_count, "incorrect_count": incorrect_count, "score": score, "unanswered_count": unanswered_question,"status":status})
+            return exam_results
         except sqlite3.Error as e:
-            print("Lỗi khi lấy danh sách bài thi:", e)
+            print("Lỗi khi lấy thông tin bài thi:", e)
             return None
+            
 
     def add_exam(self, user_id, score, start_time,type):
         try:
@@ -912,28 +939,52 @@ class ExamModel:
         
     def count_exams(self, user_id):
         # count the number of exams by type (max score, min score, average score , average time taken)
+        # group by Month in StartTime
+        
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             cursor.execute("""
-            SELECT COALESCE(MAX(Score), 0), COALESCE(MIN(Score), 0), COALESCE(AVG(Score), 0), COALESCE(AVG(TimeTaken), 0)
+            SELECT MAX(Score), MIN(Score), AVG(Score), AVG(TimeTaken),strftime('%Y-%m', StartTime)
             FROM Exam
             WHERE Type = "M" AND UserID = ?
-            GROUP BY Type
+            GROUP BY strftime('%Y-%m', StartTime)
             """, (user_id,))
             exams = cursor.fetchall()
-            json_data = {}
+            monthlyScores={}
+            monthlyScores["monthlyScores"]={}
             for item in exams:
-                json_data['max_score'] = item[0]
-                json_data['min_score'] = item[1]
-                json_data['average_score'] = item[2]
-                json_data['average_time_taken'] = item[3]
+                monthlyScores["monthlyScores"][item[4]] = [round(item[2],2), round(item[1],2), round(item[0],2)]
+            monthlyScores["monthlyCompletionTime"]={}
+            for item in exams:
+                try:
+                    monthlyScores["monthlyCompletionTime"][item[4]] = round(item[3],2)
+                except:
+                    monthlyScores["monthlyCompletionTime"][item[4]] = 0
+            
+
             conn.close()
-            return json_data # Trả về JSON dưới dạng chuỗi
+            return monthlyScores # Trả về JSON dưới dạng chuỗi
         except sqlite3.Error as e:
             print("Lỗi khi lấy số lượng bài thi:", e)
             return None
 
+    def count_exam_by_user(self,user_id,token):
+        # nếu user là "USER", khi số bài thi của user đó >= 1 thì sẽ trả vể {"message": "Please Upgrade to VIP to test more exam"}
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(ExamID) FROM Exam WHERE UserID=?", (user_id,))
+            exam_count = cursor.fetchone()[0]
+            user=UserModel()
+            user_status=user.get_role(token)[0]
+
+            conn.close()
+            if user_status=="USER" and exam_count>=1:
+                return False
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy số lượng bài thi:", e)
+            return False
         
     def delete_exam(self, exam_id):
         try:
@@ -1019,16 +1070,29 @@ class ExamResultModel:
     def __init__(self):
         self.db_name = DB_NAME
 
-    def get_all_exam_results_user(self,user_id):
+    def get_all_exam_results_user(self,user_id,exam_type_check=None):
+        # tạo cho tôi API lấy tất cả kết quả bài thi của user ( Nếu chưa có điểm thì status sẽ là "Inprogress") gọi cả ExamModel để lấy loại bài thi
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM Exam_Results WHERE UserID=?",(user_id,))
+            cursor.execute("SELECT * FROM Exam_Results WHERE UserID=?", (user_id,))
             exam_results = cursor.fetchall()
+            json_data = []
+            for item in exam_results:
+                count_question = len(ExamQuestionModel().get_exam_question_by_id(item[2]))
+                unanswered_question=count_question-item[3]-item[4]
+                exam=ExamModel()
+                exam_type=exam.get_exam_type(item[2])
+                if item[5]==0:
+                    status="Inprogress"
+                else:
+                    status="Completed"
+                if exam_type==exam_type_check:
+                    json_data.append({"exam_id": item[2], "correct_count": item[3], "incorrect_count": item[4], "score": item[5], "unanswered_count": unanswered_question,"status":status})
             conn.close()
-            return exam_results
+            return json_data
         except sqlite3.Error as e:
-            print("Lỗi khi lấy danh sách kết quả bài thi:", e)
+            print("Lỗi khi lấy kết quả bài thi:", e)
             return None
 
     def get_exam_result_by_exam_id(self, exam_id):
@@ -1036,20 +1100,20 @@ class ExamResultModel:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM Exam_Results WHERE ExamID=?", (exam_id,))
-            exam_result = cursor.fetchone()  # Sử dụng fetchone() thay vì fetchall()
-            # get list question by question id
-            
+            exam_result = cursor.fetchone()
             if exam_result:
                 exam_result = { "exam_id": exam_result[2],"correct_count": exam_result[3], "incorrect_count": exam_result[4], "score": exam_result[5], "detail": exam_result[6]}
+            else:
+                exam_result = {"correct_count": 0, "incorrect_count": 0, "score": 0, "detail": ""}
             conn.close()
             return exam_result
+        
         except sqlite3.Error as e:
             print("Lỗi khi lấy kết quả bài thi:", e)
             return None
 
 
     def add_exam_result(self, exam_id, user_id, correct_count,incorrect_count, score,detail):
-        print(exam_id, user_id, correct_count,incorrect_count, score,detail)
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
@@ -1061,14 +1125,108 @@ class ExamResultModel:
             print("Lỗi khi thêm kết quả bài thi:", e)
             return False
     
-    def update_exam_result(self, exam_result_id, user_answer, is_correct):
+    def update_exam_result(self, exam_id, correct_count=None, incorrect_count=None, score=None, detail=None):
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("UPDATE Exam_Results SET UserAnswer=?, IsCorrect=? WHERE ExamResultID=?", (user_answer, is_correct, exam_result_id))
+            update_query = "UPDATE Exam_Results SET "
+            update_params = []
+            if correct_count is not None:
+                update_query += "CorrectAnswers = ?, "
+                update_params.append(correct_count)
+            if incorrect_count is not None:
+                update_query += "IncorrectAnswers = ?, "
+                update_params.append(incorrect_count)
+            if score is not None:
+                update_query += "Score = ?, "
+                update_params.append(score)
+            if detail is not None:
+                update_query += "AnswerDetails = ?, "
+                update_params.append(detail)
+            # Xóa dấu phẩy cuối cùng và thêm điều kiện WHERE cho câu lệnh UPDATE
+            update_query = update_query.rstrip(", ") + " WHERE ExamID = ?"
+            update_params.extend([exam_id])
+            cursor.execute(update_query, update_params)
             conn.commit()
             conn.close()
             return True
         except sqlite3.Error as e:
-            print("Lỗi khi cập nhật kết quả bài thi:", e)
+            print("Lỗi khi cập nhật kết quả bài thi: %s", e)
             return False
+        
+class DocumentsModel:
+    def __init__(self):
+        self.db_name = DB_NAME
+
+    def get_all_documents(self):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM Documents")
+            documents = cursor.fetchall()
+            conn.close()
+            return documents
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy danh sách tài liệu:", e)
+            return None
+
+    def get_document_by_id(self, document_id):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM Documents WHERE DocumentID=?", (document_id,))
+            document = cursor.fetchone()
+            conn.close()
+            return document
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy thông tin tài liệu:", e)
+            return None
+
+    def get_documents_by_class_id(self, class_id):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM Documents WHERE ClassID=?", (class_id,))
+            documents = cursor.fetchall()
+            conn.close()
+            return documents
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy danh sách tài liệu:", e)
+            return None
+
+    def add_document(self, ClassID, Name, URL,created_at,thumbnail):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO Documents (ClassID, Name, URL,created_at,thumbnail) VALUES (?, ?, ?,?,?)", (ClassID, Name, URL,created_at,thumbnail))
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.Error as e:
+            print("Lỗi khi thêm tài liệu:", e)
+            return False
+    
+    def update_document(self, document_id, document_name, document_link):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE Documents SET Name=?, URL=? WHERE DocID=?", (document_name, document_link, document_id))
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.Error as e:
+            print("Lỗi khi cập nhật tài liệu:", e)
+            return False
+        
+    def delete_document(self, document_id):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM Documents WHERE DocumentID=?", (document_id,))
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.Error as e:
+            print("Lỗi khi xóa tài liệu:", e)
+            return False
+        

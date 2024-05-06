@@ -1,33 +1,46 @@
 from flask import Flask, jsonify, request
-import random
 import json
-import sqlite3
-from databaseHelper import UserModel,CreateDatabase,ClassModel,ChapterMoel,TopicModel,QuestionModel,AnswerModel,ExamModel,ExamQuestionModel,ExamResultModel
+from databaseHelper import UserModel,CreateDatabase,ClassModel,ChapterMoel,TopicModel,QuestionModel,AnswerModel,ExamModel,ExamQuestionModel,ExamResultModel,DocumentsModel
 import hashlib
 import latex2mathjax
 from datetime import datetime, timedelta
 from flask_cors import CORS
 from token_manage import generate_token
 import utils
-
+import fitz
 app = Flask(__name__)
 CORS(app)
 
+main_url="http://192.168.1.167:5000/"
 
 DB_CREATE = CreateDatabase()
 
+def generate_thumbnail(pdf_path, thumbnail_path):
+    # Mở tài liệu PDF
+    pdf_document = fitz.open(pdf_path)
+
+    # Trích xuất trang đầu tiên
+    first_page = pdf_document[0]
+
+    # Tạo hình ảnh thumbnail từ trang đầu tiên
+    pixmap = first_page.get_pixmap()
+
+    # Lưu hình ảnh thumbnail
+    pixmap.save(thumbnail_path)
+
+    # Đóng tài liệu PDF
+    pdf_document.close()
 
 def before_request_admin(authorization_header,compare_role="ADMIN"):
     role = token_to_role(authorization_header)
+    print(role)
     return role!=compare_role
-
 
 def token_to_role(authorization_header):
     token = None
     user_model = UserModel()
     role = None
     if authorization_header and authorization_header.startswith('Bearer '):
-        # Tách chuỗi token từ header 'Authorization'
         token = authorization_header.split(' ')[1]
         try:
             role = user_model.get_role(token)[0]
@@ -190,7 +203,6 @@ def add_user():
     status,message= user_model.add_user(name, password_hash, email, dob, status)
     return jsonify({"message": message}), status
     
-
 @app.route("/api/delete_user_admin", methods=["DELETE"])
 def delete_user():
     authorization_header = request.headers.get('Authorization')
@@ -201,9 +213,6 @@ def delete_user():
     user_model.delete_user(user_id)
     return jsonify({"message": "Delete successful"})
 
-
-
-    
 @app.route("/api/get_class_admin", methods=["GET"])
 def get_class():
     user_model = ClassModel()
@@ -252,9 +261,6 @@ def delete_class():
     class_id = request.args.get("class_id")
     user_model.delete_class(class_id)
     return jsonify({"message": "Delete class successful"})
-
-
-
 
 @app.route("/api/add_chapter_admin", methods=["POST"])
 def add_chapter():
@@ -422,7 +428,7 @@ def add_question():
         topic_id = data["topic_id"]
         question_model = QuestionModel()
         question_model.add_question(class_id, topic_id, chapter_id, question_content)
-        question_id = question_model.get_id_by_content(question_content)
+        question_id = question_model.get_last_question_id()
         answer_options = str(data["options"]).replace("'",'"')
         answer_options = latex2mathjax.convert_latex_to_mathjax(answer_options,2)
         correct_answer = data["correct"]
@@ -477,6 +483,10 @@ def gen_question():
     
     if before_request_admin(authorization_header, "USER") and before_request_admin(authorization_header, "VIP"):
         return jsonify({"message": "You are not allowed to use this API"}), 401
+    exam_model=ExamModel()
+    if exam_model.count_exam_by_user(user_id,token)==False:
+        return jsonify({"message": "Please Upgrade to Premium for get more exams!!!!!"}), 500
+    
     
     data = request.get_json()
     # try:
@@ -496,6 +506,7 @@ def gen_question():
                 return jsonify({"message": "Chapter is required"}), 500
     # print(chapter_ids)
     topic_ids = data.get("topic_ids", [])
+    
     
     
     if num_questions > 100 or num_questions < 1:
@@ -604,7 +615,6 @@ def submit_exam():
     exam_result_model=ExamResultModel()
     user_choices_json = json.dumps(user_choices)
     exam_result_model.add_exam_result(exam_id,user_id,correct_answer,incorrect_answer,score,user_choices_json)
-    print(user_choices)
     return jsonify({"message":"Submit exam successful","score":score,"correct_answer":correct_answer,"incorrect_answer":incorrect_answer,"null_answer":null_answer})
 
 @app.route("/api/get_exam_result", methods=["GET"])
@@ -630,13 +640,19 @@ def get_exam_result():
 
 @app.route("/api/get_exam_result_by_user", methods=["GET"])
 def get_exam_result_by_user():
-    authorization_header = request.headers.get('Authorization')
-    if before_request_admin(authorization_header,"USER") and before_request_admin(authorization_header,"VIP"):
-        return jsonify({"message": "You are not allow to use this API"}), 401
-    user_id = request.args.get("user_id")
-    exam_result_model = ExamResultModel()
-    exam_result = exam_result_model.get_all_exam_results_user(user_id)
-    exam_result = [{"exam_id": result[0], "score": result[1], "correct_answer": result[2], "incorrect_answer": result[3], "time_taken": result[4], "exam_date": result[5]} for result in exam_result]
+    try:
+        authorization_header = request.headers.get('Authorization')
+        token = authorization_header.split(' ')[1]
+        user_id = UserModel().get_user_by_token(token)[0]
+    except:
+        return jsonify({"message": "You are not allowed to use this API"}), 401
+    
+    if before_request_admin(authorization_header, "USER") and before_request_admin(authorization_header, "VIP"):
+        return jsonify({"message": "You are not allowed to use this API"}), 401
+    exam_type=request.args.get("type")
+    exam_result_model = ExamModel()
+    exam_result = exam_result_model.get_all_exam_results_user(user_id,exam_type)
+    # exam_result = [{"exam_id": result[0], "score": result[1], "correct_answer": result[2], "incorrect_answer": result[3], "time_taken": result[4], "exam_date": result[5]} for result in exam_result]
     
     return jsonify(exam_result)
 
@@ -660,5 +676,117 @@ def get_count_exams():
     exam_model=ExamModel()
     count=exam_model.count_exams(user_id)
     return jsonify(count)
+
+
+
+@app.route("/api/get_all_documents", methods=["GET"])
+def get_all_documents():
+    document_model = DocumentsModel()
+    documents = document_model.get_all_documents()
+    json_data = []
+    for document in documents:
+        document_data = {
+            "document_id": document[0],
+            "class_id": document[4],
+            "name": document[1],
+            "url": document[2],
+            "thumbnail": document[3],
+            "created_at": document[5]
+        }
+        json_data.append(document_data)
+    if documents:
+        return jsonify({"message": "Successful", "documents": json_data})
+    else:
+        return jsonify({"message": "Documents not found"}), 404
+
+
+def save_file(file,name):
+    import os
+    
+    if file:
+        # Tạo thư mục nếu nó chưa tồn tại
+        if not os.path.exists('documents/files'):
+            os.makedirs('documents/files')
+        if not os.path.exists('documents/thumbnails'):
+            os.makedirs('documents/thumbnails')
+        # Lưu file vào thư mục đã tạo
+        file.save(os.path.join('documents/files', name+".pdf"))
+        file_url=main_url+'documents/files/'+name+".pdf"
+        file_dir=os.path.join('documents/files', name+".pdf")
+        thumb_url=main_url+'documents/thumbnails/'+name+".png"
+        thumb_dir=os.path.join('documents/thumbnails', name+".png")
+        generate_thumbnail(file_dir,thumb_dir)
+        return file_url,thumb_url
+    return False
+
+    
+@app.route("/api/add_document", methods=["POST"])
+def add_document():
+    # authorization_header = request.headers.get('Authorization')
+    # if before_request_admin(authorization_header):
+    #     return jsonify({"message": "You are not allow to use this API"}), 401
+    data = request.form.to_dict()
+    # try:
+    name=data["name"]
+    file=request.files['file']
+    file_url,thumb_url=save_file(file,name)
+    class_id=data["class_id"]
+    created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    document_model = DocumentsModel()
+    document_model.add_document(class_id, name, file_url,created_at,thumb_url)
+    return jsonify({"message": "Add document successful"})
+    # except Exception as e:
+    #     print(e)
+    #     return jsonify({"message": "Add document failed"}), 500
+
+@app.route("/api/get_document_by_class", methods=["GET"])
+def get_document_by_class():
+    class_id = request.args.get("class_id")
+    document_model = DocumentsModel()
+    documents = document_model.get_documents_by_class_id(class_id)
+    json_data = []
+    for document in documents:
+        document_data = {
+            "document_id": document[0],
+            "class_id": document[4],
+            "name": document[1],
+            "url": document[2],
+            "thumbnail": document[3],
+            "created_at": document[5]
+        }
+        json_data.append(document_data)
+    if documents:
+        return jsonify({"message": "Successful", "documents": json_data})
+    else:
+        return jsonify({"message": "Documents not found"}), 404
+
+@app.route("/api/update_document", methods=["PUT"])
+def update_document():
+    authorization_header = request.headers.get('Authorization')
+    if before_request_admin(authorization_header):
+        return jsonify({"message": "You are not allow to use this API"}), 401
+    data = request.get_json()
+    document_id = data["document_id"]
+    name = data["name"]
+    url = data["url"]
+    class_id = data["class_id"]
+    document_model = DocumentsModel()
+    document_model.update_document(document_id, name, url, class_id)
+    return jsonify({"message": "Update document successful"})
+
+@app.route("/api/delete_document", methods=["DELETE"])
+def delete_document():
+    authorization_header = request.headers.get('Authorization')
+    if before_request_admin(authorization_header):
+        return jsonify({"message": "You are not allow to use this API"}), 401
+    document_id = request.args.get("document_id")
+    document_model = DocumentsModel()
+    status=document_model.delete_document(document_id)
+    
+    if status:
+        return jsonify({"message": "Delete document successful"})
+    else:
+        return jsonify({"message": "Delete document failed"}), 500
+
 
 if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)
