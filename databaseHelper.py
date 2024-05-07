@@ -313,6 +313,18 @@ class UserModel:
             print("Lỗi khi lấy số lượng người dùng:", e)
             return {"count": [], "message": "Failed"}
 
+    def reset_password(self, email, new_password):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE User SET PasswordHash=? WHERE Email=?", (new_password, email))
+            conn.commit()
+            conn.close()
+            return 200, "Password reset successfully"
+        except sqlite3.Error as e:
+            print("Lỗi khi đặt lại mật khẩu:", e)
+            return 500, "Failed to reset password"
+
 class ClassModel:
     def __init__(self):
         self.db_name = DB_NAME
@@ -908,7 +920,42 @@ class ExamModel:
         except sqlite3.Error as e:
             print("Lỗi khi lấy thông tin bài thi:", e)
             return None
-            
+        
+    def exam_count_to_chart(self):
+        # get the number of exams by month and group by Type (P for practice, M for mock)
+        # change M to Mock and P to Practice
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("""
+            SELECT COUNT(ExamID), Type, strftime('%Y-%m', StartTime)
+            FROM Exam
+            GROUP BY Type, strftime('%Y-%m', StartTime)
+            """)
+            exams = cursor.fetchall()
+            json_data = {"count": []}
+            for item in exams:
+                month = item[2]
+                exam_type = "Mock" if item[1] == "M" else "Practice"
+                count = item[0]
+                # Tìm kiếm xem có mục nào có cùng ngày không
+                found = False
+                for result in json_data["count"]:
+                    if result["Date"] == month:
+                        result[exam_type] = count
+                        found = True
+                        break
+                # Nếu không tìm thấy, thêm một mục mới
+                if not found:
+                    new_result = {"Date": month, "Mock": 0, "Practice": 0}
+                    new_result[exam_type] = count
+                    json_data["count"].append(new_result)
+            conn.close()
+            return json_data
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy số lượng bài thi:", e)
+            return {"count": [], "message": "Failed"}
+
 
     def add_exam(self, user_id, score, start_time,type):
         try:
@@ -1174,7 +1221,7 @@ class DocumentsModel:
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM Documents WHERE DocumentID=?", (document_id,))
+            cursor.execute("SELECT * FROM Documents WHERE DocID=?", (document_id,))
             document = cursor.fetchone()
             conn.close()
             return document
@@ -1206,11 +1253,11 @@ class DocumentsModel:
             print("Lỗi khi thêm tài liệu:", e)
             return False
     
-    def update_document(self, document_id, document_name, document_link):
+    def update_document(self, DocID, Name, URL,thumbnail):
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("UPDATE Documents SET Name=?, URL=? WHERE DocID=?", (document_name, document_link, document_id))
+            cursor.execute("UPDATE Documents SET Name=?, URL=?,thumbnail=? WHERE DocID=?", (Name, URL,thumbnail, DocID))
             conn.commit()
             conn.close()
             return True
@@ -1222,7 +1269,7 @@ class DocumentsModel:
         try:
             conn = sqlite3.connect(self.db_name)
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM Documents WHERE DocumentID=?", (document_id,))
+            cursor.execute("DELETE FROM Documents WHERE DocID=?", (document_id,))
             conn.commit()
             conn.close()
             return True

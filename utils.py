@@ -1,47 +1,52 @@
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
+import requests
+api_key = 'mlsn.cbc09ab0f6f7ba09547afb3fa2fad70e9b511b31710542cd5b2d9b4e23333cdb'
+sender_email = 'edusmart@trial-3z0vklojym1g7qrx.mlsender.net'
 
-
-sender_email = 'v-maria77@hotmail.com'
-sender_password = 'Phong24052001'
-smtp_server = 'smtp-mail.outlook.com'
-smtp_port = 587  # Change this if your SMTP server uses a different port
-subject = 'Mã thay đổi mật khẩu EduSmart'
-def send_email(recipient_email, body):
+def send_email(recipient_email, link):
     try:
-        # Create message container
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email
-        msg['Subject'] = subject
+        # Tạo tiêu đề và nội dung email
+        subject = "Reset Your Password"
+        body = f"Please click on the link to reset your password: {link}, \n\nThis link will expire in 5 minutes."
 
-        # Attach body
-        msg.attach(MIMEText(body, 'plain'))
+        # Định dạng JSON cho API
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "from": {"email": sender_email},
+            "to": [{"email": recipient_email}],
+            "subject": subject,
+            "text": body
+        }
 
-        # Start the SMTP session
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()  # Start TLS encryption
-        server.login(sender_email, sender_password)
+        # URL của MailerSend API
+        url = "https://api.mailersend.com/v1/email"
 
-        # Send the email
-        text = msg.as_string()
-        server.sendmail(sender_email, recipient_email, text)
-        print('Email sent successfully!')
-        return True
+        # Gửi request POST đến MailerSend
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 202:  # MailerSend returns 202 for accepted messages
+            print('Email sent successfully!')
+            return True
+        else:
+            print('Failed to send email:', response.text)
+            return False
 
     except Exception as e:
         print(f'Error: {e}')
         return False
 
-    finally:
-        server.quit()  # Close the SMTP session
         
-
 def email_validation(email):
     import re
     if re.match(r"[^@]+@[^@]+\.[^@]+", email):
         return True
     return False
+
+def generate_code():
+    import random
+    # random code 6 number have char + number (0-9, a-z, A-Z)
+    code = ''.join(random.choices('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', k=6))   
+    return code
 

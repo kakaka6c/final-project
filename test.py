@@ -1,14 +1,39 @@
-import json
-import codecs
+import requests
+api_key = 'mlsn.cbc09ab0f6f7ba09547afb3fa2fad70e9b511b31710542cd5b2d9b4e23333cdb'
+sender_email = 'edusmart@trial-3z0vklojym1g7qrx.mlsender.net'
 
-json_string = '{"value1":"\(5 x^{3} y\).","value2":"\(3 x^{3} y\).","value3":"\(4 x^{3} y\).","value4":"\(10 x^{3} y\)."}'
+def send_email(recipient_email, link):
+    try:
+        # Tạo tiêu đề và nội dung email
+        subject = "Reset Your Password"
+        body = f"Please click on the link to reset your password: {link}, \n\nThis link will expire in 5 minutes."
 
-# Sử dụng codecs.decode() để xử lý chuỗi trước khi phân tích nó thành JSON
-decoded_string = codecs.decode(json_string, 'unicode_escape')
+        # Định dạng JSON cho API
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "from": {"email": sender_email},
+            "to": [{"email": recipient_email}],
+            "subject": subject,
+            "text": body
+        }
 
-print(decoded_string)
-# Phân tích chuỗi JSON
-data = json.loads(decoded_string)
+        # URL của MailerSend API
+        url = "https://api.mailersend.com/v1/email"
 
-# In ra dữ liệu phân tích
-print(data)
+        # Gửi request POST đến MailerSend
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 202:  # MailerSend returns 202 for accepted messages
+            print('Email sent successfully!')
+            return True
+        else:
+            print('Failed to send email:', response.text)
+            return False
+
+    except Exception as e:
+        print(f'Error: {e}')
+        return False
+
+send_email("ducanh2001ok@gmail.com", "https://www.google.com")

@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request,redirect,url_for
+import paypalrestsdk
 import json
 from databaseHelper import UserModel,CreateDatabase,ClassModel,ChapterMoel,TopicModel,QuestionModel,AnswerModel,ExamModel,ExamQuestionModel,ExamResultModel,DocumentsModel
 import hashlib
@@ -8,12 +9,39 @@ from flask_cors import CORS
 from token_manage import generate_token
 import utils
 import fitz
+import os
+reset_code={}
+
 app = Flask(__name__)
 CORS(app)
+paypalrestsdk.configure({
+    'mode': 'sandbox',  # sandbox or live
+    'client_id': 'AR126Ysw2MwEct2yPzygcnj8PhJxo_l9_hS5wIm8CQZIOI2iYOkmIu9AW2s4hfwLfNgw-1XBfRuuWO8U',
+    'client_secret': 'ENFXA89XWZtc6qq4N_8ICJJgzPovRLv4vE8spIrpDZU4uoMMq616AWk50BvE0SgmRAKnq4NJKTv-YRPo'
+})
 
-main_url="http://192.168.1.167:5000/"
+main_url="https://apiedusmart.pythonanywhere.com/"
+main_fe_url="https://edusmartt.vercel.app/"
 
 DB_CREATE = CreateDatabase()
+def save_file(file,name):
+    import os
+    
+    if file:
+        # Tạo thư mục nếu nó chưa tồn tại
+        if not os.path.exists('documents/files'):
+            os.makedirs('documents/files')
+        if not os.path.exists('documents/thumbnails'):
+            os.makedirs('documents/thumbnails')
+        # Lưu file vào thư mục đã tạo
+        file.save(os.path.join('documents/files', name+".pdf"))
+        file_url=main_url+'documents/files/'+name+".pdf"
+        file_dir=os.path.join('documents/files', name+".pdf")
+        thumb_url=main_url+'documents/thumbnails/'+name+".png"
+        thumb_dir=os.path.join('documents/thumbnails', name+".png")
+        generate_thumbnail(file_dir,thumb_dir)
+        return file_url,thumb_url
+    return False
 
 def generate_thumbnail(pdf_path, thumbnail_path):
     # Mở tài liệu PDF
@@ -360,7 +388,16 @@ def count_member():
         return jsonify({"message": "You are not allow to use this API"}), 401
     user_model = UserModel()
     count = user_model.user_count_to_chart()
-    print(count)
+    return jsonify(count)
+
+@app.route("/api/count_exam_admin", methods=["GET"])
+def count_exam():
+    authorization_header = request.headers.get('Authorization')
+    if before_request_admin(authorization_header):
+        return jsonify({"message": "You are not allow to use this API"}), 401
+    exam_model = ExamModel()
+    count = exam_model.exam_count_to_chart()
+    # print(count)
     return jsonify(count)
 
 @app.route("/api/get_all_question_admin", methods=["GET"])
@@ -677,17 +714,17 @@ def get_count_exams():
     count=exam_model.count_exams(user_id)
     return jsonify(count)
 
-
-
 @app.route("/api/get_all_documents", methods=["GET"])
 def get_all_documents():
     document_model = DocumentsModel()
     documents = document_model.get_all_documents()
     json_data = []
     for document in documents:
+        class_name=ClassModel().get_class_by_id(document[4])[1]
         document_data = {
             "document_id": document[0],
             "class_id": document[4],
+            "class_name": class_name,
             "name": document[1],
             "url": document[2],
             "thumbnail": document[3],
@@ -700,52 +737,36 @@ def get_all_documents():
         return jsonify({"message": "Documents not found"}), 404
 
 
-def save_file(file,name):
-    import os
-    
-    if file:
-        # Tạo thư mục nếu nó chưa tồn tại
-        if not os.path.exists('documents/files'):
-            os.makedirs('documents/files')
-        if not os.path.exists('documents/thumbnails'):
-            os.makedirs('documents/thumbnails')
-        # Lưu file vào thư mục đã tạo
-        file.save(os.path.join('documents/files', name+".pdf"))
-        file_url=main_url+'documents/files/'+name+".pdf"
-        file_dir=os.path.join('documents/files', name+".pdf")
-        thumb_url=main_url+'documents/thumbnails/'+name+".png"
-        thumb_dir=os.path.join('documents/thumbnails', name+".png")
-        generate_thumbnail(file_dir,thumb_dir)
-        return file_url,thumb_url
-    return False
 
-    
 @app.route("/api/add_document", methods=["POST"])
 def add_document():
-    # authorization_header = request.headers.get('Authorization')
-    # if before_request_admin(authorization_header):
-    #     return jsonify({"message": "You are not allow to use this API"}), 401
+    authorization_header = request.headers.get('Authorization')
+    if before_request_admin(authorization_header):
+        return jsonify({"message": "You are not allow to use this API"}), 401
     data = request.form.to_dict()
-    # try:
-    name=data["name"]
-    file=request.files['file']
-    file_url,thumb_url=save_file(file,name)
-    class_id=data["class_id"]
-    created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    document_model = DocumentsModel()
-    document_model.add_document(class_id, name, file_url,created_at,thumb_url)
-    return jsonify({"message": "Add document successful"})
-    # except Exception as e:
-    #     print(e)
-    #     return jsonify({"message": "Add document failed"}), 500
+    try:
+        name=data["name"]
+        file=request.files['file']
+        file_url,thumb_url=save_file(file,name)
+        class_id=data["class_id"]
+        created_at=datetime.now().strftime("%Y-%m-%d")
+        document_model = DocumentsModel()
+        document_model.add_document(class_id, name, file_url,created_at,thumb_url)
+        return jsonify({"message": "Add document successful"})
+    except Exception as e:
+        return jsonify({"message": "Add document failed"}), 500
 
 @app.route("/api/get_document_by_class", methods=["GET"])
 def get_document_by_class():
     class_id = request.args.get("class_id")
     document_model = DocumentsModel()
-    documents = document_model.get_documents_by_class_id(class_id)
+    if class_id == "0":
+        documents = document_model.get_all_documents()
+    else:
+        documents = document_model.get_documents_by_class_id(class_id)
     json_data = []
     for document in documents:
+        class_name=ClassModel().get_class_by_id(document[4])[1]
         document_data = {
             "document_id": document[0],
             "class_id": document[4],
@@ -765,13 +786,24 @@ def update_document():
     authorization_header = request.headers.get('Authorization')
     if before_request_admin(authorization_header):
         return jsonify({"message": "You are not allow to use this API"}), 401
-    data = request.get_json()
+    # update document info include name, class_id, can upload new file
+    data = request.form.to_dict()
     document_id = data["document_id"]
     name = data["name"]
-    url = data["url"]
-    class_id = data["class_id"]
+    
     document_model = DocumentsModel()
-    document_model.update_document(document_id, name, url, class_id)
+    document = document_model.get_document_by_id(document_id)
+    try:
+        file=request.files['file']
+        if file:
+            file_url,thumb_url=save_file(file,name)
+        else:
+            file_url=document[2]
+            thumb_url=document[3]
+    except:
+        file_url=document[2]
+        thumb_url=document[3]
+    document_model.update_document(document_id, name, file_url,thumb_url)
     return jsonify({"message": "Update document successful"})
 
 @app.route("/api/delete_document", methods=["DELETE"])
@@ -782,11 +814,119 @@ def delete_document():
     document_id = request.args.get("document_id")
     document_model = DocumentsModel()
     status=document_model.delete_document(document_id)
+    try:
+        os.remove(document_model.get_document_by_id(document_id)[2].replace(main_url,""))
+    except:
+        pass
     
     if status:
         return jsonify({"message": "Delete document successful"})
     else:
         return jsonify({"message": "Delete document failed"}), 500
 
+##### PAYPAL APP ROUTE #####
+
+@app.route('/create_payment', methods=['GET'])
+def create_payment():
+    access_token=request.args.get("access_token")
+    
+    payment = paypalrestsdk.Payment({
+        "intent": "sale",
+        "payer": {
+            "payment_method": "paypal"
+        },
+        "redirect_urls": {
+            "return_url": url_for('execute_payment',access_token=access_token, _external=True),
+            "cancel_url": url_for('cancel_payment', _external=True)
+        },
+        "transactions": [{
+            "item_list": {
+                "items": [{
+                    "name": "item",
+                    "sku": "item",
+                    "price": "10",
+                    "currency": "USD",
+                    "quantity": 1
+                }]
+            },
+            "amount": {
+                "total": "10",
+                "currency": "USD"
+            },
+            "description": "This is the payment transaction description."
+        }]
+    })
+
+    if payment.create():
+        for link in payment.links:
+            if link.rel == "approval_url":
+                return redirect(link.href)
+    else:
+        return str(payment.error)
+
+@app.route('/execute_payment', methods=['GET'])
+def execute_payment():
+    payment_id = request.args.get('paymentId')
+    payer_id = request.args.get('PayerID')
+    access_token = request.args.get('access_token')
+    payment = paypalrestsdk.Payment.find(payment_id)
+    user_id=UserModel().get_user_by_token(access_token)[0]
+    if payment.execute({"payer_id": payer_id}):
+        user_model=UserModel()
+        user_model.update_user_status(user_id,"VIP")
+        return redirect(main_fe_url+"get-premium?status=success")
+    else:
+        return redirect(main_fe_url+"get-premium?status=error")
+
+@app.route('/cancel_payment', methods=['GET'])
+def cancel_payment():
+    return redirect(main_fe_url+"get-premium?status=cancel")
+
+@app.route('/reset_password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    email = data["email"]
+    user_model = UserModel()
+    user = user_model.get_user_by_email(email)
+    if user:
+        code=utils.generate_code()
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # add more json to reset_code dict.
+        reset_code[code]= {"email":email,"created_at":created_at}
+        link=main_fe_url+"ResetPassword?code={code}&email={email}".format(code=code,email=email)
+        utils.send_email(email,link)
+        return jsonify({"message": "Reset password link has been sent to your email"})
+    return jsonify({"message": "Email not found"}),404
+
+@app.route('/change_password_reset', methods=['POST'])
+def change_password():
+    data = request.get_json()
+    code = data["code"]
+    email = data["email"]
+    password = data["password"]
+    time_now=datetime.now()
+    if code not in reset_code:
+        return jsonify({"message": "Code not found"}), 500
+    created_at=datetime.strptime(reset_code[code]["created_at"],"%Y-%m-%d %H:%M:%S")
+    if (time_now-created_at).seconds>300:
+        return jsonify({"message": "Code expired"}), 500
+    try:
+        user = reset_code[code]
+        if user["email"]==email:
+            user_model = UserModel()
+            password_hash = hashlib.md5(password.encode()).hexdigest()
+            user_model.reset_password(email,password_hash)
+            reset_code.pop(code)
+            return jsonify({"message": "Change password successful"})
+    except:
+        return jsonify({"message": "Change password failed"}), 500
+    
+@app.route('/api/exam_chart', methods=['GET'])
+def exam_chart():
+    user_model = UserModel()
+    count = user_model.exam_count_to_chart()
+    return jsonify(count)
+        
+    
 
 if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)
