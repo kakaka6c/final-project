@@ -6,3 +6,4 @@ documents
 *.pdf
 *.zip
 *.sql
+/test.py

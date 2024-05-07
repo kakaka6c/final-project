@@ -16,12 +16,12 @@ app = Flask(__name__)
 CORS(app)
 paypalrestsdk.configure({
     'mode': 'sandbox',  # sandbox or live
-    'client_id': 'AR126Ysw2MwEct2yPzygcnj8PhJxo_l9_hS5wIm8CQZIOI2iYOkmIu9AW2s4hfwLfNgw-1XBfRuuWO8U',
-    'client_secret': 'ENFXA89XWZtc6qq4N_8ICJJgzPovRLv4vE8spIrpDZU4uoMMq616AWk50BvE0SgmRAKnq4NJKTv-YRPo'
+    'client_id': '',
+    'client_secret': ''
 })
 
-main_url="https://apiedusmart.pythonanywhere.com/"
-main_fe_url="https://edusmartt.vercel.app/"
+main_url=""
+main_fe_url=""
 
 DB_CREATE = CreateDatabase()
 def save_file(file,name):

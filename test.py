@@ -1,6 +1,6 @@
 import requests
-api_key = 'mlsn.cbc09ab0f6f7ba09547afb3fa2fad70e9b511b31710542cd5b2d9b4e23333cdb'
-sender_email = 'edusmart@trial-3z0vklojym1g7qrx.mlsender.net'
+api_key = 'xxxx'
+sender_email = 'xxxx'
 
 def send_email(recipient_email, link):
     try:
@@ -36,4 +36,5 @@ def send_email(recipient_email, link):
         print(f'Error: {e}')
         return False
 
-send_email("ducanh2001ok@gmail.com", "https://www.google.com")
+send_email("", "https://www.google.com")
+
