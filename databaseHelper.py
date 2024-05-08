@@ -365,6 +365,18 @@ class ClassModel:
             print("Lỗi khi thêm lớp:", e)
             return False
     
+    def check_class_exist(self, class_name):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM Class WHERE ClassName=?", (class_name,))
+            class_info = cursor.fetchone()
+            conn.close()
+            return class_info
+        except sqlite3.Error as e:
+            print("Lỗi khi kiểm tra lớp học:", e)
+            return None
+    
     def update_class(self, class_id, class_name):
         try:
             conn = sqlite3.connect(self.db_name)
@@ -890,6 +902,18 @@ class ExamModel:
             return exam
         except sqlite3.Error as e:
             print("Lỗi khi lấy thông tin bài thi:", e)
+            return None
+    
+    def get_exam_owner(self, exam_id):
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("SELECT UserID FROM Exam WHERE ExamID=?", (exam_id,))
+            user_id = cursor.fetchone()
+            conn.close()
+            return user_id[0]
+        except sqlite3.Error as e:
+            print("Lỗi khi lấy chủ sở hữu bài thi:", e)
             return None
 
     def get_all_exam_results_user(self, user_id,exam_type):

@@ -271,6 +271,8 @@ def add_class():
     class_name = data["class_name"]
     if int(class_name) <1 or int(class_name) > 12:
         return jsonify({"message": "Class name must be from 1 to 12"}), 400
+    if ClassModel().check_class_exist(class_name):
+        return jsonify({"message": "This class already exist"}), 400
     user_model = ClassModel()
     user_model.add_class(class_name)
     return jsonify({"message": "Add class successful"})
@@ -528,7 +530,7 @@ def gen_question():
         token = authorization_header.split(' ')[1]
         user_id = UserModel().get_user_by_token(token)[0]
     except:
-        return jsonify({"message": "You are not allowed to use this API"}), 401
+        return jsonify({"message": "You need login for create Exam"}), 401
     
     if before_request_admin(authorization_header, "USER") and before_request_admin(authorization_header, "VIP"):
         return jsonify({"message": "You are not allowed to use this API"}), 401
@@ -538,48 +540,55 @@ def gen_question():
     
     
     data = request.get_json()
-    # try:
-    class_id = data.get('class_ids', [])
-    exam_type=data.get('exam_type',"P")
-    chapter_ids = []
-    if exam_type == "M":
-        if len(class_id) == 0:
+    try:
+        class_id = data.get('class_ids', [])
+        exam_type=data.get('exam_type',"P")
+        chapter_ids = []
+        if exam_type == "M":
+            if len(class_id) == 0:
+                return jsonify({"message": "Please select class !!!"}), 500
+            chapter_ids=[]
+            num_questions = 40
+        else:
+            num_questions = data.get("num_questions", 1)
+            if len(class_id) > 0:
+                chapter_ids =  data.get("chapter_ids", [])
+                if chapter_ids == []:
+                    return jsonify({"message": "Chapter is required"}), 500
+        # print(chapter_ids)
+        topic_ids = data.get("topic_ids", [])
+        
+        if num_questions > 100 or num_questions < 1:
+            return jsonify({"message": "Number of questions must be between 1 and 100 !!!"}), 500
+        
+        if class_id == [None] :
             return jsonify({"message": "Please select class !!!"}), 500
-        chapter_ids=[]
-        num_questions = 40
-    else:
-        num_questions = data.get("num_questions", 1)
-        if len(class_id) > 0:
-            chapter_ids =  data.get("chapter_ids", [])
-            if chapter_ids == []:
-                return jsonify({"message": "Chapter is required"}), 500
-    # print(chapter_ids)
-    topic_ids = data.get("topic_ids", [])
-    
-    
-    
-    if num_questions > 100 or num_questions < 1:
-        return jsonify({"message": "Number of questions must be between 1 and 100 !!!"}), 500
-    
-    if class_id == [None] :
-        return jsonify({"message": "Please select class !!!"}), 500
-    
-    question_model = QuestionModel()
-    exam_id,questions_count = question_model.generate_questions(class_id, topic_ids, chapter_ids, num_questions, token, user_id,exam_type)
-    # get all questions and answers
-    
-    return (jsonify({"message": "Generate question successful", "exam_id": exam_id, "questions_count": questions_count}), 200)
-    # except Exception as e:
-    #     print(e)
-    #     return jsonify({"message": "Something error !!!!!"}), 500
+        
+        question_model = QuestionModel()
+        exam_id,questions_count = question_model.generate_questions(class_id, topic_ids, chapter_ids, num_questions, token, user_id,exam_type)
+        # get all questions and answers
+        
+        return (jsonify({"message": "Generate question successful", "exam_id": exam_id, "questions_count": questions_count}), 200)
+    except Exception as e:
+        print(e)
+        return jsonify({"message": "Something error !!!!!"}), 500
 
 @app.route("/api/get_exam", methods=["GET"])
 def get_exam():
+    try:
+        authorization_header = request.headers.get('Authorization')
+        token = authorization_header.split(' ')[1]
+        user_id = UserModel().get_user_by_token(token)[0]
+    except:
+        return jsonify({"message": "You need login for create Exam"}), 401
     exam_id = request.args.get("exam_id")
     question_model = ExamQuestionModel()
     questions = question_model.get_exam_question_by_id(exam_id)
-    # print(questions)
-    # Khởi tạo danh sách để lưu các cặp câu hỏi và đáp án
+    # check if user is owner of exam
+    exam_model=ExamModel()
+    owner=exam_model.get_exam_owner(exam_id)
+    if owner!=user_id:
+        return jsonify({"message": "You are not allowed to do this exam"}), 401
     question_answer_list = []
     
     # Lấy câu hỏi và đáp án của tất cả câu hỏi có question_id trong questions
