@@ -1,7 +1,19 @@
 from flask import Flask, jsonify, request,redirect,url_for
 import paypalrestsdk
 import json
-from databaseHelper import UserModel,CreateDatabase,ClassModel,ChapterMoel,TopicModel,QuestionModel,AnswerModel,ExamModel,ExamQuestionModel,ExamResultModel,DocumentsModel
+from databaseHelper import (
+    UserModel,
+    CreateDatabase,
+    ClassModel,
+    ChapterModel,  
+    TopicModel,
+    QuestionModel,
+    AnswerModel,
+    ExamModel,
+    ExamQuestionModel,
+    ExamResultModel,
+    DocumentsModel
+)
 import hashlib
 import latex2mathjax
 from datetime import datetime, timedelta
@@ -16,12 +28,12 @@ app = Flask(__name__)
 CORS(app)
 paypalrestsdk.configure({
     'mode': 'sandbox',  # sandbox or live
-    'client_id': '',
-    'client_secret': ''
+    'client_id': 'AR126Ysw2MwEct2yPzygcnj8PhJxo_l9_hS5wIm8CQZIOI2iYOkmIu9AW2s4hfwLfNgw-1XBfRuuWO8U',
+    'client_secret': 'ENFXA89XWZtc6qq4N_8ICJJgzPovRLv4vE8spIrpDZU4uoMMq616AWk50BvE0SgmRAKnq4NJKTv-YRPo'
 })
 
-main_url=""
-main_fe_url=""
+main_url="https://apiedusmart.pythonanywhere.com/"
+main_fe_url="https://edusmartt.vercel.app/"
 
 DB_CREATE = CreateDatabase()
 def save_file(file,name):
@@ -298,13 +310,13 @@ def add_chapter():
     data = request.get_json()
     chapter_name = data["chapter_name"]
     class_id = data["class_id"]
-    user_model = ChapterMoel()
+    user_model = ChapterModel()
     user_model.add_chapter(chapter_name, class_id)
     return jsonify({"message": "Add chapter successful"})
 
 @app.route("/api/get_chapter_admin", methods=["GET"])
 def get_chapter():
-    user_model = ChapterMoel()
+    user_model = ChapterModel()
     class_id = request.args.get("class_id")
     if not class_id:
         chapters = user_model.get_all_chapters()
@@ -323,7 +335,7 @@ def update_chapter():
     data = request.get_json()
     chapter_id = data["chapter_id"]
     chapter_name = data["chapter_name"]
-    user_model = ChapterMoel()
+    user_model = ChapterModel()
     status,message=user_model.update_chapter(chapter_id, chapter_name)
     return jsonify({"message": message}), status
 
@@ -332,7 +344,7 @@ def delete_chapter():
     authorization_header = request.headers.get('Authorization')
     if before_request_admin(authorization_header):
         return jsonify({"message": "You are not allow to use this API"}), 401
-    user_model = ChapterMoel()
+    user_model = ChapterModel()
     chapter_id = request.args.get("chapter_id")
     user_model.delete_chapter(chapter_id)
     return jsonify({"message": "Delete chapter successful"})

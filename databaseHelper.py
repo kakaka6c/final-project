@@ -1,6 +1,4 @@
 import sqlite3
-import os
-# get the current date
 from datetime import datetime
 import json
 
@@ -391,7 +389,7 @@ class ClassModel:
             print("Lỗi khi xóa lớp:", e)
             return False
         
-class ChapterMoel:
+class ChapterModel:
     def __init__(self):
         self.db_name = DB_NAME
 
