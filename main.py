@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request,redirect,url_for
+from flask import Flask, jsonify, request,redirect,url_for,render_template
 import paypalrestsdk
 import json
 from databaseHelper import (
@@ -947,7 +947,6 @@ def exam_chart():
     user_model = UserModel()
     count = user_model.exam_count_to_chart()
     return jsonify(count)
-        
-    
+
 
 if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)

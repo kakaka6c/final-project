@@ -8,6 +8,13 @@ def convert_latex_to_mathjax(string,count_slash=1):
         even_replacement = '\\\\)'
     dollar_count = 0
 
+    if "$" not in string:
+        # check if first character is backslash and second character is (
+        if string[0] == '\\' and string[1] == '(':
+            return string
+        else:
+            return odd_replacement + string + even_replacement
+    
     for char in string:
         if char == '$':
             dollar_count += 1
@@ -17,7 +24,6 @@ def convert_latex_to_mathjax(string,count_slash=1):
                 result += odd_replacement
         else:
             result += char
-
     return result
 
 
