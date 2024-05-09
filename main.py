@@ -948,5 +948,9 @@ def exam_chart():
     count = user_model.exam_count_to_chart()
     return jsonify(count)
 
+@app.route('/convert_mathjax', methods=['GET'])
+def convert_mathjax():
+    return render_template('convert_mathjax.html')
+
 
 if __name__ == "__main__":    app.run(debug=True, host="0.0.0.0", port=5000)

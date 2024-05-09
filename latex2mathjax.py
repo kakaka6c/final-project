@@ -10,7 +10,7 @@ def convert_latex_to_mathjax(string,count_slash=1):
 
     if "$" not in string:
         # check if first character is backslash and second character is (
-        if string[0] == '\\' and string[1] == '(':
+        if string[0] == '\\' and string[1] == '(' and "value" in string:
             return string
         else:
             return odd_replacement + string + even_replacement
